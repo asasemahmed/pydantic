@@ -19,7 +19,9 @@ from pydantic import (
     BaseModel,
     Field,
     FieldSerializationInfo,
+    GetCoreSchemaHandler,
     PydanticUserError,
+    RootModel,
     SerializationInfo,
     SerializerFunctionWrapHandler,
     TypeAdapter,
@@ -1394,6 +1396,43 @@ def test_wrap_ser_called_once() -> None:
 
     my_model = MyParentModel.model_validate({'nested': {'inner_value': 'foo'}})
     assert my_model.model_dump() == {'nested': {'inner_value': 'my_prefix:foo'}}
+
+
+def test_wrap_model_serializer_called_once_custom_core_schema() -> None:
+    """https://github.com/pydantic/pydantic/issues/11812"""
+
+    class MyModel(RootModel[str]):
+        @model_serializer(mode='wrap')
+        def my_wrapper_serializer(self, serializer: SerializerFunctionWrapHandler) -> str:
+            return 'my_prefix:' + serializer(self)
+
+        @classmethod
+        def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+            return core_schema.union_schema([handler(cls), handler(cls)])
+
+    class MyParentModel(BaseModel):
+        nested: MyModel
+
+    assert MyModel('value').model_dump() == 'my_prefix:value'
+    assert MyParentModel(nested='value').model_dump() == {'nested': 'my_prefix:value'}
+
+
+def test_wrap_model_serializer_called_once_recursive_model() -> None:
+    class Node(BaseModel):
+        child: 'Node | None' = None
+
+        @model_serializer(mode='wrap')
+        def wrap_ser(self, serializer: SerializerFunctionWrapHandler) -> dict[str, Any]:
+            return {'wrapped': serializer(self)}
+
+    class Parent(BaseModel):
+        node: Node
+
+    node = Node(child=Node())
+    expected = {'wrapped': {'child': {'wrapped': {'child': None}}}}
+
+    assert node.model_dump() == expected
+    assert Parent(node=node).model_dump() == {'node': expected}
 
 
 def test_serialization_info_properties() -> None:

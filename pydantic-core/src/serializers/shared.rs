@@ -238,6 +238,17 @@ impl CombinedSerializer {
         Self::find_serializer(type_, schema, config, definitions)
     }
 
+    /// Same as `CombinedSerializer::build`, except that a prebuilt serializer is never used for `schema` itself
+    /// (prebuilt serializers can still be used for nested schemas).
+    pub(crate) fn build_without_prebuilt(
+        schema: &Bound<'_, PyDict>,
+        config: Option<&Bound<'_, PyDict>>,
+        definitions: &mut DefinitionsBuilder<Arc<CombinedSerializer>>,
+    ) -> PyResult<Arc<CombinedSerializer>> {
+        let serializer = Self::_build(schema, config, definitions, false)?;
+        Self::maybe_wrap_in_polymorphism_trampoline(serializer, schema)
+    }
+
     fn maybe_wrap_in_polymorphism_trampoline(
         serializer: Arc<CombinedSerializer>,
         schema: &Bound<'_, PyDict>,

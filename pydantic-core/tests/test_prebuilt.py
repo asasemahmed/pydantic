@@ -199,6 +199,54 @@ def test_prebuilt_not_used_for_wrap_serializer_functions() -> None:
     assert outer_serializer.to_python(outer_instance) == {'inner': {'x': 'hello'}}
 
 
+def test_prebuilt_not_used_for_inner_schema_of_wrap_serializer_functions() -> None:
+    """The prebuilt serializer may include the wrap serializer function, which would then be applied twice.
+
+    See https://github.com/pydantic/pydantic/issues/11812.
+    """
+
+    class InnerModel:
+        x: str
+
+        def __init__(self, x: str) -> None:
+            self.x = x
+
+    def serialize_inner(v: InnerModel, serializer) -> dict[str, str]:
+        return {'wrapped': serializer(v)}
+
+    inner_schema = core_schema.model_schema(
+        InnerModel,
+        schema=core_schema.model_fields_schema(
+            {'x': core_schema.model_field(schema=core_schema.str_schema())},
+        ),
+        serialization=core_schema.wrap_serializer_function_ser_schema(serialize_inner),
+    )
+
+    # e.g. from a custom `__get_pydantic_core_schema__()` on the model, the prebuilt serializer
+    # isn't a wrap serializer itself but still includes the wrap serializer function:
+    inner_serializer = SchemaSerializer(core_schema.union_schema([inner_schema, core_schema.str_schema()]))
+    InnerModel.__pydantic_complete__ = True  # pyright: ignore[reportAttributeAccessIssue]
+    InnerModel.__pydantic_serializer__ = inner_serializer  # pyright: ignore[reportAttributeAccessIssue]
+
+    class OuterModel:
+        inner: InnerModel
+
+        def __init__(self, inner: InnerModel) -> None:
+            self.inner = inner
+
+    outer_schema = core_schema.model_schema(
+        OuterModel,
+        schema=core_schema.model_fields_schema({'inner': core_schema.model_field(schema=inner_schema)}),
+    )
+
+    outer_serializer = SchemaSerializer(outer_schema)
+
+    assert inner_serializer.to_python(InnerModel(x='hello')) == {'wrapped': {'x': 'hello'}}
+
+    outer_instance = OuterModel(inner=InnerModel(x='hello'))
+    assert outer_serializer.to_python(outer_instance) == {'inner': {'wrapped': {'x': 'hello'}}}
+
+
 def test_prebuilt_not_used_for_wrap_validator_functions() -> None:
     class InnerModel:
         x: str

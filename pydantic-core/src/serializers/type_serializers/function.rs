@@ -351,13 +351,15 @@ impl BuildSerializer for FunctionWrapSerializer {
         let function_name = function_name(&function)?;
 
         // try to get `schema.serialization.schema`, otherwise use `schema` with `serialization` key removed
-        let inner_schema = if let Some(s) = ser_schema.get_as(intern!(py, "schema"))? {
-            s
+        let serializer = if let Some(s) = ser_schema.get_as(intern!(py, "schema"))? {
+            CombinedSerializer::build(&s, config, definitions)?
         } else {
-            copy_outer_schema(schema)?
+            // A prebuilt serializer can't be used here: it is built from the full schema of the type
+            // (e.g. a model), which may already include this wrap function (e.g. a wrap `model_serializer`
+            // of a recursive model, or of a model with a custom `__get_pydantic_core_schema__` returning
+            // a union), and the function would then be applied twice.
+            CombinedSerializer::build_without_prebuilt(&copy_outer_schema(schema)?, config, definitions)?
         };
-
-        let serializer = CombinedSerializer::build(&inner_schema, config, definitions)?;
 
         let return_serializer = match ser_schema.get_as(intern!(py, "return_schema"))? {
             Some(s) => CombinedSerializer::build(&s, config, definitions)?,
