@@ -35,6 +35,7 @@ from pydantic import (
     ConfigDict,
     Field,
     GetCoreSchemaHandler,
+    PlainSerializer,
     PrivateAttr,
     PydanticDeprecatedSince211,
     PydanticSchemaGenerationError,
@@ -3477,6 +3478,23 @@ def test_extra_validator_field() -> None:
         'title': 'Model',
         'type': 'object',
     }
+
+
+def test_extra_serializer_field() -> None:
+    """https://github.com/pydantic/pydantic/issues/9696"""
+
+    FormattedDatetime = Annotated[datetime, PlainSerializer(lambda v: v.strftime('%d/%m/%Y'), when_used='json')]
+
+    class Model(BaseModel, extra='allow'):
+        __pydantic_extra__: dict[str, FormattedDatetime | Any] = Field(init=False)
+
+        start_time: FormattedDatetime
+
+    dt = datetime(2024, 6, 18, 13, 0)
+    m = Model(start_time=dt, end_time=dt, name='name')
+
+    assert m.model_dump() == {'start_time': dt, 'end_time': dt, 'name': 'name'}
+    assert m.model_dump_json() == '{"start_time":"18/06/2024","end_time":"18/06/2024","name":"name"}'
 
 
 def test_extra_validator_named() -> None:
