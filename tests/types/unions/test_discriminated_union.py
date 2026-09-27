@@ -36,6 +36,7 @@ from pydantic.fields import FieldInfo
 from pydantic.functional_validators import model_validator
 from pydantic.json_schema import GenerateJsonSchema
 from pydantic.types import Tag
+from pydantic.warnings import UnsupportedFieldAttributeWarning
 
 
 def test_discriminated_union_type_invalid_single_variant():
@@ -79,6 +80,29 @@ def test_discriminated_union_single_variant():
         x: InnerModel = Field(discriminator='qwe')
 
     assert Model(x={'qwe': 'qwe'}).x.qwe == 'qwe'
+
+
+def test_discriminator_on_single_union_member_warns():
+    """https://github.com/pydantic/pydantic/issues/10482"""
+
+    class A1(BaseModel):
+        tag: Literal['A']
+
+    class A2(BaseModel):
+        tag: Literal['A']
+
+    class B(BaseModel):
+        tag: Literal['B', 'C']
+
+    with pytest.warns(UnsupportedFieldAttributeWarning, match='A discriminator was attached to a single member'):
+        ta = TypeAdapter(Annotated[A1, Field(discriminator='tag')] | Annotated[A2, Field(discriminator='tag')])
+
+    # The discriminators are not used to select the union member:
+    assert isinstance(ta.validate_python({'tag': 'A'}), A1)
+
+    # A single member matching several tags is still a single member:
+    with pytest.warns(UnsupportedFieldAttributeWarning, match='A discriminator was attached to a single member'):
+        TypeAdapter(Annotated[B, Field(discriminator='tag')] | int)
 
 
 def test_discriminated_union_defined_discriminator():

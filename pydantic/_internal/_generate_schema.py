@@ -1342,6 +1342,16 @@ class GenerateSchema:
         else:
             choices_with_tags: list[CoreSchema | tuple[CoreSchema, str]] = []
             for choice in choices:
+                # A tagged union wrapping a single schema means a discriminator was attached to a single member
+                # of this union (e.g. `Annotated[A, Field(discriminator=...)] | B`), where it has no effect on
+                # which member gets selected:
+                if choice['type'] == 'tagged-union' and len({id(c) for c in choice['choices'].values()}) == 1:
+                    warnings.warn(
+                        'A discriminator was attached to a single member of a union type, which has no effect on '
+                        'which union member gets selected. To use a discriminated union, apply the discriminator '
+                        'to the union type itself (e.g. `Annotated[A | B, Field(discriminator=...)]`).',
+                        category=UnsupportedFieldAttributeWarning,
+                    )
                 tag = cast(CoreMetadata, choice.get('metadata', {})).get('pydantic_internal_union_tag_key')
                 if tag is not None:
                     choices_with_tags.append((choice, tag))
