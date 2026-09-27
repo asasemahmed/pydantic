@@ -456,6 +456,58 @@ def test_union_serializes_model_subclass_from_definition() -> None:
     assert s.to_python(DBUser(name='John', password='secret')) == {'name': 'John'}
 
 
+@pytest.mark.parametrize('use_definitions', [False, True])
+def test_union_serializer_prefers_exact_model_type_with_lax_check(use_definitions: bool) -> None:
+    """If no choice matches with strict checking, choices for the exact type of the value are tried first.
+
+    See https://github.com/pydantic/pydantic/issues/12099.
+    """
+
+    class Parent(BaseModel):
+        pass
+
+    class Child(Parent):
+        pass
+
+    def model_schemas(ref: bool) -> list[core_schema.ModelSchema]:
+        return [
+            core_schema.model_schema(
+                Parent,
+                core_schema.model_fields_schema({'a': core_schema.model_field(core_schema.float_schema())}),
+                ref='Parent' if ref else None,
+            ),
+            core_schema.model_schema(
+                Child,
+                core_schema.model_fields_schema(
+                    {
+                        'a': core_schema.model_field(core_schema.float_schema()),
+                        'b': core_schema.model_field(core_schema.int_schema()),
+                    }
+                ),
+                ref='Child' if ref else None,
+            ),
+        ]
+
+    if use_definitions:
+        schema = core_schema.definitions_schema(
+            core_schema.union_schema(
+                [core_schema.definition_reference_schema('Parent'), core_schema.definition_reference_schema('Child')]
+            ),
+            model_schemas(ref=True),
+        )
+    else:
+        schema = core_schema.union_schema(model_schemas(ref=False))
+
+    s = SchemaSerializer(schema)
+
+    # `a` is an int, so neither choice matches with strict checking:
+    child = Child(a=0, b=3)
+    assert s.to_python(child) == {'a': 0, 'b': 3}
+    assert s.to_json(child) == b'{"a":0.0,"b":3}'
+
+    assert s.to_python(Parent(a=0)) == {'a': 0}
+
+
 def test_union_serializes_list_of_model_subclass_from_definition() -> None:
     class BaseModel:
         __slots__ = '__dict__', '__pydantic_fields_set__', '__pydantic_extra__', '__pydantic_private__'

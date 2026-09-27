@@ -1224,6 +1224,26 @@ def test_subclass_support_unions_with_forward_ref() -> None:
     assert foo_recursive.model_dump() == {'items': [{'items': [{'bar_id': 42}]}]}
 
 
+def test_subclass_support_unions_with_non_exact_default() -> None:
+    """https://github.com/pydantic/pydantic/issues/12099"""
+
+    class Parent(BaseModel):
+        a: float = 0
+
+    class Child(Parent):
+        b: int
+
+    class Container(BaseModel):
+        union: Parent | Child
+
+    # The unvalidated `0` default of `a` doesn't strictly match `float`, so neither union member matches strictly:
+    container = Container(union=Child(b=3))
+    assert container.model_dump() == {'union': {'a': 0, 'b': 3}}
+    assert container.model_dump_json() == '{"union":{"a":0.0,"b":3}}'
+
+    assert Container(union=Parent()).model_dump() == {'union': {'a': 0}}
+
+
 def test_serialize_python_context() -> None:
     contexts: list[Any] = [None, None, {'foo': 'bar'}]
 

@@ -116,4 +116,8 @@ impl TypeSerializer for DefinitionRefSerializer {
             .retry_with_lax_check
             .get_or_init(|| self.definition.read(|s| s.unwrap().retry_with_lax_check()), &false)
     }
+
+    fn is_exact_type(&self, value: &Bound<'_, PyAny>) -> bool {
+        self.definition.read(|s| s.unwrap().is_exact_type(value))
+    }
 }

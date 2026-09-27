@@ -75,4 +75,8 @@ impl TypeSerializer for PrebuiltSerializer {
     fn retry_with_lax_check(&self) -> bool {
         self.schema_serializer.get().serializer.retry_with_lax_check()
     }
+
+    fn is_exact_type(&self, value: &Bound<'_, PyAny>) -> bool {
+        self.schema_serializer.get().serializer.is_exact_type(value)
+    }
 }

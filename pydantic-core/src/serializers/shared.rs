@@ -452,6 +452,12 @@ pub(crate) trait TypeSerializer: Send + Sync + Debug {
         false
     }
 
+    /// Used by union serializers to prioritize choices that exactly match the type of `value`
+    /// when retrying while allowing subclasses (e.g. the class of a model or dataclass serializer)
+    fn is_exact_type(&self, _value: &Bound<'_, PyAny>) -> bool {
+        false
+    }
+
     fn get_default(&self, _py: Python) -> PyResult<Option<Py<PyAny>>> {
         Ok(None)
     }

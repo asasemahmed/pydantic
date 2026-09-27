@@ -71,7 +71,11 @@ impl_py_gc_traverse!(UnionSerializer { choices });
 impl TypeSerializer for UnionSerializer {
     fn to_python<'py>(&self, value: &Bound<'py, PyAny>, state: &mut SerializationState<'py>) -> PyResult<Py<PyAny>> {
         self.choices
-            .serialize(|comb_serializer, state| comb_serializer.to_python(value, state), state)?
+            .serialize(
+                value,
+                |comb_serializer, state| comb_serializer.to_python(value, state),
+                state,
+            )?
             .map_or_else(|| infer_to_python(value, state), Ok)
     }
 
@@ -81,7 +85,11 @@ impl TypeSerializer for UnionSerializer {
         state: &mut SerializationState<'py>,
     ) -> PyResult<Cow<'a, str>> {
         self.choices
-            .serialize(|comb_serializer, state| comb_serializer.json_key(key, state), state)?
+            .serialize(
+                key,
+                |comb_serializer, state| comb_serializer.json_key(key, state),
+                state,
+            )?
             .map_or_else(|| infer_json_key(key, state), Ok)
     }
 
@@ -91,10 +99,11 @@ impl TypeSerializer for UnionSerializer {
         serializer: S,
         state: &mut SerializationState<'py>,
     ) -> Result<S::Ok, S::Error> {
-        match self
-            .choices
-            .serialize(|comb_serializer, state| comb_serializer.to_python(value, state), state)
-        {
+        match self.choices.serialize(
+            value,
+            |comb_serializer, state| comb_serializer.to_python(value, state),
+            state,
+        ) {
             Ok(Some(v)) => {
                 let state = &mut state.scoped_include_exclude(IncludeExclude::empty());
                 infer_serialize(v.bind(value.py()), serializer, state)
@@ -275,7 +284,7 @@ impl TaggedUnionSerializer {
             if in_top_level_union(state) {
                 register_tagged_union_fallback_warning(value, state);
             }
-            return self.choices.serialize(selector, state);
+            return self.choices.serialize(value, selector, state);
         };
 
         // Try a first pass with the appropriate checking level
@@ -354,9 +363,10 @@ impl UnionChoices {
         self.choices.iter().any(|c| c.retry_with_lax_check())
     }
 
-    /// Try to serialize using the union choices from left to right
+    /// Try to serialize `value` using the union choices from left to right
     fn serialize<'py, S>(
         &self,
+        value: &Bound<'py, PyAny>,
         mut selector: impl FnMut(&CombinedSerializer, &mut SerializationState<'py>) -> PyResult<S>,
         state: &mut SerializationState<'py>,
     ) -> PyResult<Option<S>> {
@@ -385,7 +395,12 @@ impl UnionChoices {
         // otherwise, in a top level union, we retry with lax checking if any choice supports it
         if self.retry_with_lax_check() {
             let state = &mut scoped_check_level(state, SerCheck::Lax);
-            for comb_serializer in &self.choices {
+            // choices matching the exact type of the value are tried first, so that e.g. an instance of `Child`
+            // is serialized using `Child` rather than `Parent` in a `Parent | Child` union (similar to smart mode
+            // validation, where an exact type match is preferred over a subclass instance)
+            let exact_choices = self.choices.iter().filter(|c| c.is_exact_type(value));
+            let other_choices = self.choices.iter().filter(|c| !c.is_exact_type(value));
+            for comb_serializer in exact_choices.chain(other_choices) {
                 if let Ok(v) = selector(comb_serializer, state) {
                     return Ok(Some(v));
                 }
