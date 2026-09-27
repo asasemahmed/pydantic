@@ -2685,7 +2685,7 @@ def test_literal_types() -> None:
     assert Model.model_json_schema() == {
         '$defs': {
             'FloatEnum': {'enum': [123.0, 123.1], 'title': 'FloatEnum', 'type': 'number'},
-            'ListEnum': {'enum': [[123], [456]], 'title': 'ListEnum', 'type': 'array'},
+            'ListEnum': {'enum': [[123], [456]], 'items': {'type': 'integer'}, 'title': 'ListEnum', 'type': 'array'},
         },
         'properties': {
             'str_literal': {'enum': ['foo', 'bar'], 'title': 'Str Literal', 'type': 'string'},
@@ -6336,7 +6336,41 @@ def test_enum_complex_value() -> None:
     ta = TypeAdapter(MyEnum)
 
     # insert_assert(ta.json_schema())
-    assert ta.json_schema() == {'enum': [[1, 2], [2, 3]], 'title': 'MyEnum', 'type': 'array'}
+    assert ta.json_schema() == {
+        'enum': [[1, 2], [2, 3]],
+        'items': {'type': 'integer'},
+        'title': 'MyEnum',
+        'type': 'array',
+    }
+
+
+def test_enum_array_values_items() -> None:
+    """https://github.com/pydantic/pydantic/issues/12029"""
+
+    class StringListEnum(Enum):
+        a = ['foo', 'bar']
+        b = ['baz']
+
+    class MixedListEnum(Enum):
+        a = ['foo', 1]
+        b = ['bar', 2]
+
+    class EmptyListEnum(Enum):
+        a = []
+
+    assert TypeAdapter(StringListEnum).json_schema() == {
+        'enum': [['foo', 'bar'], ['baz']],
+        'items': {'type': 'string'},
+        'title': 'StringListEnum',
+        'type': 'array',
+    }
+    # `items` is only set when all the array items share the same type:
+    assert TypeAdapter(MixedListEnum).json_schema() == {
+        'enum': [['foo', 1], ['bar', 2]],
+        'title': 'MixedListEnum',
+        'type': 'array',
+    }
+    assert TypeAdapter(EmptyListEnum).json_schema() == {'enum': [[]], 'title': 'EmptyListEnum', 'type': 'array'}
 
 
 def test_json_schema_serialization_defaults_required():

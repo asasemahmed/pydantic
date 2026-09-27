@@ -927,6 +927,8 @@ class GenerateJsonSchema:
             result['type'] = 'boolean'
         elif types == {list}:
             result['type'] = 'array'
+            if (items_type := _get_array_items_type(expected)) is not None:
+                result['items'] = {'type': items_type}
         elif types == {type(None)}:
             result['type'] = 'null'
         return result
@@ -991,6 +993,8 @@ class GenerateJsonSchema:
             result['type'] = 'boolean'
         elif types == {list}:
             result['type'] = 'array'
+            if (items_type := _get_array_items_type(expected)) is not None:
+                result['items'] = {'type': items_type}
 
         return result
 
@@ -2960,6 +2964,23 @@ def _decimal_serialization_pattern(max_digits: int | None, decimal_places: int |
 
 def _deduplicate_schemas(schemas: Iterable[JsonDict]) -> list[JsonDict]:
     return list({_make_json_hashable(schema): schema for schema in schemas}.values())
+
+
+_JSON_TYPES_BY_PYTHON_TYPE: dict[type[Any], str] = {
+    str: 'string',
+    int: 'integer',
+    float: 'number',
+    bool: 'boolean',
+    type(None): 'null',
+}
+
+
+def _get_array_items_type(arrays: list[list[Any]]) -> str | None:
+    """Get the JSON Schema type shared by all the items of the provided arrays, if any."""
+    item_types = {type(item) for array in arrays for item in array}
+    if len(item_types) == 1:
+        return _JSON_TYPES_BY_PYTHON_TYPE.get(item_types.pop())
+    return None
 
 
 _HashableJsonValue: TypeAlias = (
