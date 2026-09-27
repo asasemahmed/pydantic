@@ -229,9 +229,13 @@ class ConfigDict(TypedDict, total=False):
     This may be useful if you want to serialize the value later. Defaults to `False`.
 
     !!! note
-        If you have a field typed as an enum with a default value, the [`validate_default`][pydantic.ConfigDict.validate_default]
-        configuration needs to be set to ensure that the `use_enum_values` flag takes effect on the default, as extracting an
-        enum's value occurs during validation, not serialization.
+        Extracting an enum's value occurs during validation, not serialization. As such:
+
+        - If you have a field typed as an enum with a default value, the [`validate_default`][pydantic.ConfigDict.validate_default]
+          configuration needs to be set to ensure that the `use_enum_values` flag takes effect on the default.
+        - If you assign an enum member to a field after the model instance is created, the
+          [`validate_assignment`][pydantic.ConfigDict.validate_assignment] configuration needs to be set to ensure that
+          the `use_enum_values` flag takes effect on the assigned value.
 
     ```python
     from enum import Enum
